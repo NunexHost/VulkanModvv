@@ -14,7 +14,7 @@ public class GlFramebuffer {
     private static int ID_COUNTER = 1;
     private static final Int2ReferenceOpenHashMap<GlFramebuffer> map = new Int2ReferenceOpenHashMap<>();
     private static int boundId = 0;
-    private static GlFramebuffer boundFramebuffer;
+    public static GlFramebuffer boundFramebuffer;
 
     public static int genFramebufferId() {
         int id = ID_COUNTER;
@@ -134,7 +134,14 @@ public class GlFramebuffer {
         this.id = i;
     }
 
-    boolean beginRendering() {
+    public static void cancelPendingCmds() {
+        if(GlFramebuffer.boundId != 0) {
+
+            GlFramebuffer.boundId = 0;
+        }
+    }
+
+    public boolean beginRendering() {
         return Renderer.getInstance().beginRendering(this.renderPass, this.framebuffer);
     }
 
@@ -220,9 +227,9 @@ public class GlFramebuffer {
         builder.getColorAttachmentInfo()
                 .setLoadOp(VK_ATTACHMENT_LOAD_OP_LOAD)
                 .setFinalLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
+        //TODO: Set to STORE_OP_DONT_CARE when in Default Mode
         if(hasDepthImage)
-            builder.getDepthAttachmentInfo().setOps(VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE);
+            builder.getDepthAttachmentInfo().setOps(VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE);
 
         this.renderPass = builder.build();
 

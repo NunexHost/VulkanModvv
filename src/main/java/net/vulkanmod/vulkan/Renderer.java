@@ -4,9 +4,10 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.vulkanmod.Initializer;
+import net.vulkanmod.gl.GlFramebuffer;
 import net.vulkanmod.mixin.window.WindowAccessor;
 import net.vulkanmod.render.chunk.AreaUploadManager;
-import net.vulkanmod.render.chunk.TerrainShaderManager;
+import net.vulkanmod.render.PipelineManager;
 import net.vulkanmod.render.profiling.Profiler2;
 import net.vulkanmod.vulkan.framebuffer.Framebuffer;
 import net.vulkanmod.vulkan.framebuffer.RenderPass;
@@ -34,6 +35,8 @@ import java.util.Set;
 import static com.mojang.blaze3d.platform.GlConst.GL_COLOR_BUFFER_BIT;
 import static com.mojang.blaze3d.platform.GlConst.GL_DEPTH_BUFFER_BIT;
 import static net.vulkanmod.vulkan.Vulkan.*;
+import static net.vulkanmod.vulkan.queue.Queue.GraphicsQueue;
+import static net.vulkanmod.vulkan.queue.Queue.PresentQueue;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.KHRSurface.*;
@@ -41,6 +44,7 @@ import static org.lwjgl.vulkan.KHRSwapchain.*;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class Renderer {
+    public static boolean reload = false;
     private static Renderer INSTANCE;
 
     private static VkDevice device;
@@ -48,6 +52,13 @@ public class Renderer {
     private static boolean swapChainUpdate = false;
     public static boolean reload = false;
     public static boolean skipRendering = false;
+
+    private static boolean effectActive = false;
+    private static boolean renderPassUpdate = false;
+    private static boolean hasCalled = false;
+    public static boolean useMode=false;
+    public static boolean recomp = false;
+
     public static void initRenderer() {
         INSTANCE = new Renderer();
         INSTANCE.init();
@@ -80,9 +91,6 @@ public class Renderer {
     private VkCommandBuffer currentCmdBuffer;
     private boolean recordingCmds = false;
 
-//    MainPass mainPass = DefaultMainPass.PASS;
-    MainPass mainPass = DefaultMainPass.PASS;
-
     private final List<Runnable> onResizeCallbacks = new ObjectArrayList<>();
 
     public Renderer() {
@@ -90,10 +98,6 @@ public class Renderer {
         framesNum = getSwapChain().getFramesNum();
         imagesNum = getSwapChain().getImagesNum();
 
-        addOnResizeCallback(() -> {
-            VK11.vkTrimCommandPool(device, Vulkan.getCommandPool(), 0);
-            Queue.GraphicsQueue.trimCmdPool();
-        });
     }
 
     private void init() {
@@ -104,7 +108,7 @@ public class Renderer {
         drawer.createResources(framesNum);
 
         Uniforms.setupDefaultUniforms();
-        TerrainShaderManager.init();
+        PipelineManager.init();
         AreaUploadManager.createInstance();
 
         allocateCommandBuffers();
@@ -180,11 +184,32 @@ public class Renderer {
         Profiler2 p = Profiler2.getMainProfiler();
         p.pop();
         p.push("Frame_fence");
+        if(recomp)
+        {
+            waitIdle();
+            PipelineManager.reload(getSwapChain().getRenderPass());
+            recomp=false;
+        }
         if(reload)
         {
+//            waitIdle();
+//            PipelineManager.reload(getSwapChain().getRenderPass());
             Minecraft.getInstance().levelRenderer.allChanged();
             reload=false;
         }
+        if(renderPassUpdate)
+        {
+//            skipRendering = true;
+
+            useMode=effectActive;
+//            mainPass= LegacyMainPass.PASS;
+            Initializer.LOGGER.error("Using RenderPass: "+ (useMode ? "Post Effect" : "Default"));
+
+                renderPassUpdate = false;
+
+//            mainPass2= LegacyMainPass.PASS;
+        }
+
 
         if(swapChainUpdate) {
             recreateSwapChain();
@@ -207,7 +232,7 @@ public class Renderer {
         vkWaitForFences(device, inFlightFences.get(currentFrame), true, VUtil.UINT64_MAX);
 
         p.pop();
-        p.start();
+        p.round();
         p.push("Begin_rendering");
 
 //        AreaUploadManager.INSTANCE.updateFrame();
@@ -223,7 +248,7 @@ public class Renderer {
         resetDescriptors();
 
         currentCmdBuffer = commandBuffers.get(currentFrame);
-        vkResetCommandBuffer(currentCmdBuffer, 0);
+
         recordingCmds = true;
 
         try(MemoryStack stack = stackPush()) {
@@ -256,7 +281,8 @@ public class Renderer {
                 throw new RuntimeException("Failed to begin recording command buffer:" + err);
             }
 
-            mainPass.begin(commandBuffer, stack);
+
+            LegacyMainPass.PASS.begin(commandBuffer, stack);
 
             vkCmdSetDepthBias(commandBuffer, 0.0F, 0.0F, 0.0F);
         }
@@ -271,8 +297,22 @@ public class Renderer {
         Profiler2 p = Profiler2.getMainProfiler();
         p.push("End_rendering");
 
-        mainPass.end(currentCmdBuffer);
-
+        LegacyMainPass.PASS.end(currentCmdBuffer);
+//        if(!hasCalled)
+        if(!hasCalled)
+        {
+            if(effectActive)
+            {
+                scheduleRenderPassUpdate();
+            }
+//            else renderPassidx = (renderPassidx + 1) % mainPass2.length;
+            effectActive = false;
+        }
+        if(renderPassUpdate) {
+            this.endRenderPass();
+            GlFramebuffer.cancelPendingCmds();
+        }
+        hasCalled=false;
         submitFrame();
         recordingCmds = false;
 
@@ -302,7 +342,7 @@ public class Renderer {
 
             Synchronization.INSTANCE.waitFences();
 
-            if((vkResult = vkQueueSubmit(DeviceManager.getGraphicsQueue().queue(), submitInfo, inFlightFences.get(currentFrame))) != VK_SUCCESS) {
+            if((vkResult = vkQueueSubmit(GraphicsQueue.queue(), submitInfo, inFlightFences.get(currentFrame))) != VK_SUCCESS) {
                 vkResetFences(device, stack.longs(inFlightFences.get(currentFrame)));
                 throw new RuntimeException("Failed to submit draw command buffer: " + vkResult);
             }
@@ -317,7 +357,7 @@ public class Renderer {
 
             presentInfo.pImageIndices(stack.ints(imageIndex));
 
-            vkResult = vkQueuePresentKHR(DeviceManager.getPresentQueue().queue(), presentInfo);
+            vkResult = vkQueuePresentKHR(PresentQueue.queue(), presentInfo);
 
             if(vkResult == VK_ERROR_OUT_OF_DATE_KHR || vkResult == VK_SUBOPTIMAL_KHR || swapChainUpdate) {
                 swapChainUpdate = true;
@@ -403,7 +443,7 @@ public class Renderer {
                     .pWaitSemaphores(stack.longs(imageAvailableSemaphores.get(currentFrame)))
                     .pWaitDstStageMask(stack.ints(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT));
 
-            vkQueueSubmit(DeviceManager.getGraphicsQueue().queue(), info, inFlightFences.get(currentFrame));
+            vkQueueSubmit(GraphicsQueue.queue(), info, inFlightFences.get(currentFrame));
             vkWaitForFences(device, inFlightFences.get(currentFrame),  true, -1);
         }
     }
@@ -447,7 +487,7 @@ public class Renderer {
 
         drawer.cleanUpResources();
 
-        TerrainShaderManager.destroyPipelines();
+        PipelineManager.destroyPipelines();
         VTextureSelector.getWhiteTexture().free();
     }
 
@@ -467,9 +507,9 @@ public class Renderer {
         return boundRenderPass;
     }
 
-    public void setMainPass(MainPass mainPass) { this.mainPass = mainPass; }
+//    public void setMainPass(MainPass mainPass) { this.mainPass = mainPass; }
 
-    public MainPass getMainPass() { return this.mainPass; }
+    public MainPass getMainPass() { return LegacyMainPass.PASS; }
 
     public void addOnResizeCallback(Runnable runnable) {
         this.onResizeCallbacks.add(runnable);
@@ -480,7 +520,7 @@ public class Renderer {
 
         //Debug
         if(boundRenderPass == null)
-            mainPass.mainTargetBindWrite();
+            LegacyMainPass.PASS.mainTargetBindWrite();
 
         PipelineState currentState = PipelineState.getCurrentPipelineState(boundRenderPass);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getHandle(currentState));
@@ -603,69 +643,35 @@ public class Renderer {
             viewport.maxDepth(1.0f);
 
             VkRect2D.Buffer scissor = VkRect2D.malloc(1, stack);
-            scissor.offset(VkOffset2D.malloc(stack).set(0, 0));
-            scissor.extent(transformedExtent);
+            scissor.offset().set(0, 0);
+            scissor.extent().set(width, Math.abs(height));
 
             vkCmdSetViewport(INSTANCE.currentCmdBuffer, 0, viewport);
             vkCmdSetScissor(INSTANCE.currentCmdBuffer, 0, scissor);
         }
     }
 
-    /**
-     * Transform the X/Y coordinates from Minecraft coordinate space to Vulkan coordinate space
-     * and write them to VkOffset2D
-     * @param offset2D the offset to which the coordinates should be written
-     * @param x the X coordinate
-     * @param y the Y coordinate
-     * @param w the viewport/scissor operation width
-     * @param h the viewport/scissor operation height
-     * @return same offset2D with transformations applied as necessary
-     */
-    private static VkOffset2D transformToOffset(VkOffset2D offset2D, int x, int y, int w, int h) {
-        int pretransformFlags = Vulkan.getPretransformFlags();
-        if(pretransformFlags == 0) {
-            offset2D.set(x, y);
-            return offset2D;
+    public static void resetViewport() {
+        hasCalled=true;
+        if(!effectActive/* && getInstance().mainPass instanceof DefaultMainPass*/)
+        {
+            scheduleRenderPassUpdate();
         }
-        Framebuffer boundFramebuffer = Renderer.getInstance().boundFramebuffer;
-        int framebufferWidth = boundFramebuffer.getWidth();
-        int framebufferHeight = boundFramebuffer.getHeight();
-        switch (pretransformFlags) {
-            case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR -> {
-                offset2D.x(framebufferWidth - h - y);
-                offset2D.y(x);
-            }
-            case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR -> {
-                offset2D.x(framebufferWidth - w - x);
-                offset2D.y(framebufferHeight - h - y);
-            }
-            case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR -> {
-                offset2D.x(y);
-                offset2D.y(framebufferHeight - w - x);
-            }
-            default -> {
-                offset2D.x(x);
-                offset2D.y(y);
-            }
-        }
-        return offset2D;
-    }
+        effectActive=true;
+        try(MemoryStack stack = stackPush()) {
+            int width = getSwapChain().getWidth();
+            int height = getSwapChain().getHeight();
 
-    /**
-     * Transform the width and height from Minecraft coordinate space to the Vulkan coordinate space
-     * and write them to VkExtent2D
-     * @param extent2D the extent to which the values should be written
-     * @param w the viewport/scissor operation width
-     * @param h the viewport/scissor operation height
-     * @return the same VkExtent2D with transformations applied as necessary
-     */
-    private static VkExtent2D transformToExtent(VkExtent2D extent2D, int w, int h) {
-        int pretransformFlags = Vulkan.getPretransformFlags();
-        if(pretransformFlags == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
-                pretransformFlags == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
-            return extent2D.set(h, w);
+            VkViewport.Buffer viewport = VkViewport.malloc(1, stack);
+            viewport.x(0.0f);
+            viewport.y(height);
+            viewport.width(width);
+            viewport.height(-height);
+            viewport.minDepth(0.0f);
+            viewport.maxDepth(1.0f);
+
+            vkCmdSetViewport(INSTANCE.currentCmdBuffer, 0, viewport);
         }
-        return extent2D.set(w, h);
     }
 
     public static void setScissor(int x, int y, int width, int height) {
@@ -736,4 +742,5 @@ public class Renderer {
     public static boolean isRecording() { return INSTANCE.recordingCmds; }
 
     public static void scheduleSwapChainUpdate() { swapChainUpdate = true; }
+    public static void scheduleRenderPassUpdate() { renderPassUpdate = true; }
 }

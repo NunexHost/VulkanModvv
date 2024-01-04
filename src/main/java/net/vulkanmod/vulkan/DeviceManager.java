@@ -36,7 +36,6 @@ public abstract class DeviceManager {
 
     public static SurfaceProperties surfaceProperties;
 
-
     static void getAvailableDevices(VkInstance instance) {
         try(MemoryStack stack = stackPush()) {
             suitableDevices = new ObjectArrayList<>();
@@ -170,7 +169,11 @@ public abstract class DeviceManager {
             createInfo.pQueueCreateInfos(queueCreateInfos);
             // queueCreateInfoCount is automatically set
 
-            createInfo.pNext(deviceFeatures);
+            createInfo.pEnabledFeatures(deviceFeatures.features());
+
+
+            createInfo.pNext(deviceVulkan11Features);
+
             //Vulkan 1.3 dynamic rendering
 //            VkPhysicalDeviceVulkan13Features deviceVulkan13Features = VkPhysicalDeviceVulkan13Features.calloc(stack);
 //            deviceVulkan13Features.sType$Default();
@@ -208,6 +211,10 @@ public abstract class DeviceManager {
 //            vkGetDeviceQueue(device, indices.transferFamily, 0, pQueue);
 //            transferQueue = new VkQueue(pQueue.get(0), device);
 
+            graphicsQueue = new GraphicsQueue(stack, indices.graphicsFamily);
+            transferQueue = new TransferQueue(stack, indices.transferFamily);
+            presentQueue = new PresentQueue(stack, indices.presentFamily);
+            computeQueue = new ComputeQueue(stack, indices.computeFamily);
 
         }
     }
@@ -233,6 +240,8 @@ public abstract class DeviceManager {
     }
 
     private static boolean isDeviceSuitable(VkPhysicalDevice device) {
+
+        Queue.QueueFamilyIndices indices = findQueueFamilies(device);
 
         boolean extensionsSupported = checkDeviceExtensionSupport(device);
         boolean swapChainAdequate = false;
@@ -278,17 +287,21 @@ public abstract class DeviceManager {
                     .containsAll(Vulkan.REQUIRED_EXTENSION);
         }
     }
+
     // Use the optimal most performant depth format for the specific GPU
     // Nvidia performs best with 24 bit depth, while AMD is most performant with 32-bit float
-    public static int findDepthFormat() {
+    public static int findDepthFormat(boolean use24BitsDepthFormat) {
+        int[] formats = use24BitsDepthFormat ? new int[]
+                {VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT}
+                : new int[] {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT};
+
         return findSupportedFormat(
                 VK_IMAGE_TILING_OPTIMAL,
                 VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT);
+                formats);
     }
 
     private static int findSupportedFormat(int tiling, int features, int... formatCandidates) {
-
         try(MemoryStack stack = stackPush()) {
 
             VkFormatProperties props = VkFormatProperties.calloc(stack);
@@ -312,21 +325,9 @@ public abstract class DeviceManager {
     public static void destroy() {
         GraphicsQueue.cleanUp();
         TransferQueue.cleanUp();
-        FakeTransferQueue.cleanUp();
+        PresentQueue.cleanUp();
 
         vkDestroyDevice(device, null);
-    }
-
-    public static Queue getGraphicsQueue() {
-        return GraphicsQueue;
-    }
-
-    public static Queue getPresentQueue() {
-        return PresentQueue;
-    }
-
-    public static Queue getTransferQueue() {
-        return TransferQueue;
     }
 
     public static SurfaceProperties querySurfaceProperties(VkPhysicalDevice device, MemoryStack stack) {

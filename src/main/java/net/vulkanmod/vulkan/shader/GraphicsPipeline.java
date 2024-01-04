@@ -3,6 +3,7 @@ package net.vulkanmod.vulkan.shader;
 import com.google.common.collect.ImmutableList;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
+import net.vulkanmod.Initializer;
 import net.vulkanmod.interfaces.VertexFormatMixed;
 import net.vulkanmod.vulkan.DeviceManager;
 import net.vulkanmod.vulkan.Renderer;
@@ -15,6 +16,7 @@ import java.nio.LongBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
+import static java.lang.Boolean.FALSE;
 import static net.vulkanmod.vulkan.shader.PipelineState.*;
 import static net.vulkanmod.vulkan.shader.PipelineState.DEFAULT_COLORMASK;
 import static org.lwjgl.system.MemoryStack.stackGet;
@@ -29,6 +31,7 @@ public class GraphicsPipeline extends Pipeline {
 
     private long vertShaderModule = 0;
     private long fragShaderModule = 0;
+    private PipelineState state;
 
     GraphicsPipeline(Builder builder) {
         super(builder.shaderPath);
@@ -42,9 +45,11 @@ public class GraphicsPipeline extends Pipeline {
         createPipelineLayout();
         createShaderModules(builder.vertShaderSPIRV, builder.fragShaderSPIRV);
 
-        if(builder.renderPass != null)
-            graphicsPipelines.computeIfAbsent(new PipelineState(DEFAULT_BLEND_STATE, DEFAULT_DEPTH_STATE, DEFAULT_LOGICOP_STATE, DEFAULT_COLORMASK, builder.renderPass),
+        if(builder.renderPass != null) {
+            this.state = new PipelineState(DEFAULT_BLEND_STATE, DEFAULT_DEPTH_STATE, DEFAULT_LOGICOP_STATE, DEFAULT_COLORMASK, builder.renderPass);
+            graphicsPipelines.computeIfAbsent(state,
                     this::createGraphicsPipeline);
+        }
 
         createDescriptorSets(Renderer.getFramesNum());
 
@@ -56,12 +61,26 @@ public class GraphicsPipeline extends Pipeline {
     }
 
     private long createGraphicsPipeline(PipelineState state) {
-
+        this.state=state;
         try(MemoryStack stack = stackPush()) {
 
             ByteBuffer entryPoint = stack.UTF8("main");
 
             VkPipelineShaderStageCreateInfo.Buffer shaderStages = VkPipelineShaderStageCreateInfo.calloc(2, stack);
+
+
+                VkSpecializationMapEntry.Buffer vkSpecializationMapEntry = VkSpecializationMapEntry.calloc(1, stack)
+                        .constantID(0)
+                        .offset(0)
+                        .size(1);
+
+            boolean equals = this.name.equals("basic/terrain/terrain")||this.name.equals("minecraft/core/rendertype_entity_cutout_no_cull/rendertype_entity_cutout_no_cull");
+            VkSpecializationInfo vkSpecializationInfo = equals ? VkSpecializationInfo.calloc(stack)
+                        .pMapEntries(vkSpecializationMapEntry)
+                        .pData(stack.bytes((byte) (Initializer.CONFIG.renderFog ? 1 : 0))) : null;
+
+
+
 
             VkPipelineShaderStageCreateInfo vertShaderStageInfo = shaderStages.get(0);
 
@@ -69,6 +88,7 @@ public class GraphicsPipeline extends Pipeline {
             vertShaderStageInfo.stage(VK_SHADER_STAGE_VERTEX_BIT);
             vertShaderStageInfo.module(vertShaderModule);
             vertShaderStageInfo.pName(entryPoint);
+            vertShaderStageInfo.pSpecializationInfo(vkSpecializationInfo);
 
             VkPipelineShaderStageCreateInfo fragShaderStageInfo = shaderStages.get(1);
 
@@ -76,6 +96,7 @@ public class GraphicsPipeline extends Pipeline {
             fragShaderStageInfo.stage(VK_SHADER_STAGE_FRAGMENT_BIT);
             fragShaderStageInfo.module(fragShaderModule);
             fragShaderStageInfo.pName(entryPoint);
+            vertShaderStageInfo.pSpecializationInfo(vkSpecializationInfo);
 
             // ===> VERTEX STAGE <===
 
@@ -336,6 +357,20 @@ public class GraphicsPipeline extends Pipeline {
         }
 
         return attributeDescriptions.rewind();
+    }
+
+    public void recompilePipeline()
+    {
+
+        if(this.graphicsPipelines.containsKey(this.state))
+        {
+            this.graphicsPipelines.replace(this.state, this.createGraphicsPipeline(this.state));
+        }
+//        PIPELINES.remove(this);
+//        Renderer.getInstance().removeUsedPipeline(this);
+//        this.graphicsPipelines.remove(this.state);
+//        PIPELINES.add(this);
+//        Renderer.getInstance().addUsedPipeline(this);
     }
 
     public void cleanUp() {

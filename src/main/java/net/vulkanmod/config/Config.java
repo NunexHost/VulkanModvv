@@ -32,6 +32,8 @@ public class Config {
             .setPrettyPrinting()
             .excludeFieldsWithModifiers(Modifier.PRIVATE)
             .create();
+    public boolean perRenderTypeAreaBuffers = false;
+    public boolean renderFog = true; //can't use bool due to ByteBuffer Limitations
 
     public static Config load(Path path) {
         Config config;

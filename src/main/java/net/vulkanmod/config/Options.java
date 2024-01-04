@@ -236,14 +236,12 @@ public class Options {
                         .setTooltip(Component.nullToEmpty("""
                         Enables culling for entities on not visible sections.""")),
                 new SwitchOption("Indirect Draw",
-                        value -> config.indirectDraw = drawIndirectSupported ? value : false,
-                        () -> drawIndirectSupported && config.indirectDraw)
-                        .setTooltip(Component.nullToEmpty(
-                "Supported by GPU?: "+drawIndirectSupported+"\n"+
-                        "\n"+
-                        "Reduces CPU overhead but increases GPU overhead.\n"+
-                        "Enabling it might help in CPU limited systems.\n")),
-                new SwitchOption("Per RenderType AreaBuffers",
+                        value -> config.indirectDraw = value,
+                        () -> config.indirectDraw)
+                        .setTooltip(Component.nullToEmpty("""
+                        Reduces CPU overhead but increases GPU overhead.
+                        Enabling it might help in CPU limited systems.""")),
+                new SwitchOption("Low VRAM Mode",
                         value -> {
                             config.perRenderTypeAreaBuffers = value;
                             Renderer.reload=true;
@@ -251,24 +249,15 @@ public class Options {
                         () -> config.perRenderTypeAreaBuffers).setTooltip(Component.nullToEmpty("""
                         (WARNING: EXPERIMENTAL)
                         
-                        Potentially improves performance of Chunk Rendering
-                        
-                        Very Architecture specific: May have no effect on some Devices""")),
-                new SwitchOption("Fast Leaves Fix",
+                        Reduces VRAM usage by up to 40%
+                        May Increase/Decrease FPS: How this effects FPS Depends on GPU architecture
+                        (Can boost performance on Old Nvidia cards)""")),
+                new SwitchOption("RenderFog",
                         value -> {
-                            config.fastLeavesFix = value;
-                            Renderer.reload=true;
+                            config.renderFog = value;
+                            Renderer.recomp=true;
                         },
-                        () -> config.fastLeavesFix).setTooltip(Component.nullToEmpty("""
-                        (WARNING: EXPERIMENTAL)
-                        
-                        Effects FPS on both Fancy/Fast Graphics
-                        
-                        Uses an Alternate Rendering Mode to restore Fast Leaves on Fast Graphics
-                        
-                        Recommended to use with "Per RenderType AreaBuffers"
-                        
-                        Extremely experimental: May Decrease performance, even on Fancy Graphics""")),
+                        () -> config.renderFog),
                 new CyclingOption<>("Device selector",
                         IntStream.range(-1, DeviceManager.suitableDevices.size()).boxed().toArray(Integer[]::new),
                         value -> Component.nullToEmpty(value == -1 ? "Auto" : DeviceManager.suitableDevices.get(value).deviceName),

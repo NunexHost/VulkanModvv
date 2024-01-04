@@ -33,29 +33,30 @@ public abstract class VRenderSystem {
     public static boolean cull = true;
 
     public static final float clearDepth = 1.0f;
-    public static FloatBuffer clearColor = MemoryUtil.memCallocFloat(4);
+    public static FloatBuffer clearColor = MemoryUtil.memCallocFloat(4); //Avoid the driver caching dirty memory as a clear Color
+    public static FloatBuffer clearColorX = MemoryUtil.memCallocFloat(4); //Avoid the driver caching dirty memory as a clear Color
+    private static final float[] clearColor2 = new float[]{0,0,0,0};
+    public static final MappedBuffer modelViewMatrix = new MappedBuffer(MemoryUtil.memAlloc(16 * 4));
+    public static final MappedBuffer projectionMatrix = new MappedBuffer(MemoryUtil.memAlloc(16 * 4));
+    public static final MappedBuffer TextureMatrix = new MappedBuffer(MemoryUtil.memAlloc(16 * 4));
+    public static final MappedBuffer MVP = new MappedBuffer(MemoryUtil.memAlloc(16 * 4));
 
-    public static final float[] clearColor2 = new float[]{0,0,0,0};
+    public static final MappedBuffer ChunkOffset = new MappedBuffer(MemoryUtil.memAlloc(3 * 4));
+    public static final MappedBuffer lightDirection0 = new MappedBuffer(MemoryUtil.memAlloc(3 * 4));
+    public static final MappedBuffer lightDirection1 = new MappedBuffer(MemoryUtil.memAlloc(3 * 4));
 
+    public static final MappedBuffer shaderColor = new MappedBuffer(MemoryUtil.memAlloc(4 * 4));
+    public static final MappedBuffer shaderFogColor = new MappedBuffer(MemoryUtil.memAlloc(4 * 4));
 
-    public static MappedBuffer modelViewMatrix = MappedBuffer.getMappedBuffer(16 * 4);
-    public static MappedBuffer projectionMatrix = MappedBuffer.getMappedBuffer(16 * 4);
-    public static MappedBuffer TextureMatrix = MappedBuffer.getMappedBuffer(16 * 4);
-    public static MappedBuffer MVP = MappedBuffer.getMappedBuffer(16 * 4);
-
-    public static MappedBuffer ChunkOffset = MappedBuffer.getMappedBuffer(3 * 4);
-    public static MappedBuffer lightDirection0 = MappedBuffer.getMappedBuffer(3 * 4);
-    public static MappedBuffer lightDirection1 = MappedBuffer.getMappedBuffer(3 * 4);
-
-    public static MappedBuffer shaderColor = MappedBuffer.getMappedBuffer(4 * 4);
-    public static MappedBuffer shaderFogColor = MappedBuffer.getMappedBuffer(4 * 4);
-
-    public static MappedBuffer screenSize = MappedBuffer.getMappedBuffer(2 * 4);
+    public static final MappedBuffer screenSize = new MappedBuffer(MemoryUtil.memAlloc(2 * 4));
 
     public static float alphaCutout = 0.0f;
 
     private static final float[] depthBias = new float[2];
     public static boolean clearColorUpdate = false;
+    private static boolean appliedClear;
+    private static boolean canApplyClear = false;
+
 
     public static void initRenderer()
     {
@@ -70,57 +71,6 @@ public abstract class VRenderSystem {
         return DeviceManager.deviceProperties.limits().maxImageDimension2D();
     }
 
-    public static void renderCrosshair(int p_69348_, boolean p_69349_, boolean p_69350_, boolean p_69351_) {
-        RenderSystem.assertOnRenderThread();
-//        GlStateManager._disableTexture();
-//        GlStateManager._depthMask(false);
-//        GlStateManager._disableCull();
-        VRenderSystem.depthMask(false);
-        RenderSystem.setShader(GameRenderer::getRendertypeLinesShader);
-        Tesselator tesselator = RenderSystem.renderThreadTesselator();
-        BufferBuilder bufferbuilder = tesselator.getBuilder();
-        RenderSystem.lineWidth(4.0F);
-        bufferbuilder.begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
-        if (p_69349_) {
-            bufferbuilder.vertex(0.0D, 0.0D, 0.0D).color(0, 0, 0, 255).normal(1.0F, 0.0F, 0.0F).endVertex();
-            bufferbuilder.vertex((double)p_69348_, 0.0D, 0.0D).color(0, 0, 0, 255).normal(1.0F, 0.0F, 0.0F).endVertex();
-        }
-
-        if (p_69350_) {
-            bufferbuilder.vertex(0.0D, 0.0D, 0.0D).color(0, 0, 0, 255).normal(0.0F, 1.0F, 0.0F).endVertex();
-            bufferbuilder.vertex(0.0D, (double)p_69348_, 0.0D).color(0, 0, 0, 255).normal(0.0F, 1.0F, 0.0F).endVertex();
-        }
-
-        if (p_69351_) {
-            bufferbuilder.vertex(0.0D, 0.0D, 0.0D).color(0, 0, 0, 255).normal(0.0F, 0.0F, 1.0F).endVertex();
-            bufferbuilder.vertex(0.0D, 0.0D, (double)p_69348_).color(0, 0, 0, 255).normal(0.0F, 0.0F, 1.0F).endVertex();
-        }
-
-        tesselator.end();
-        RenderSystem.lineWidth(2.0F);
-        bufferbuilder.begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
-        if (p_69349_) {
-            bufferbuilder.vertex(0.0D, 0.0D, 0.0D).color(255, 0, 0, 255).normal(1.0F, 0.0F, 0.0F).endVertex();
-            bufferbuilder.vertex((double)p_69348_, 0.0D, 0.0D).color(255, 0, 0, 255).normal(1.0F, 0.0F, 0.0F).endVertex();
-        }
-
-        if (p_69350_) {
-            bufferbuilder.vertex(0.0D, 0.0D, 0.0D).color(0, 255, 0, 255).normal(0.0F, 1.0F, 0.0F).endVertex();
-            bufferbuilder.vertex(0.0D, (double)p_69348_, 0.0D).color(0, 255, 0, 255).normal(0.0F, 1.0F, 0.0F).endVertex();
-        }
-
-        if (p_69351_) {
-            bufferbuilder.vertex(0.0D, 0.0D, 0.0D).color(127, 127, 255, 255).normal(0.0F, 0.0F, 1.0F).endVertex();
-            bufferbuilder.vertex(0.0D, 0.0D, (double)p_69348_).color(127, 127, 255, 255).normal(0.0F, 0.0F, 1.0F).endVertex();
-        }
-
-        tesselator.end();
-        RenderSystem.lineWidth(1.0F);
-//        GlStateManager._enableCull();
-        RenderSystem.depthMask(true);
-//        GlStateManager._enableTexture();
-    }
-
     public static void applyMVP(Matrix4f MV, Matrix4f P) {
         applyModelViewMatrix(MV);
         applyProjectionMatrix(P);
@@ -128,42 +78,23 @@ public abstract class VRenderSystem {
     }
 
     public static void applyModelViewMatrix(Matrix4f mat) {
-        mat.get(modelViewMatrix.buffer());
+        mat.get(modelViewMatrix.buffer().asFloatBuffer());
         //MemoryUtil.memPutFloat(MemoryUtil.memAddress(modelViewMatrix), 1);
     }
 
     public static void applyProjectionMatrix(Matrix4f mat) {
-        mat.get(projectionMatrix.buffer());
-
-
-    	Matrix4f pretransformMatrix = Vulkan.getPretransformMatrix();
-        ByteBuffer projMatrixBuffer = projectionMatrix.buffer();
-        // This allows us to skip allocating an object
-        // if the matrix is known to be an identity matrix.
-        // Tbh idk if the jvm will just optimize out the allocation but i can't be sure
-        // as java is sometimes pretty pedantic about object allocations.
-        if((pretransformMatrix.properties() & Matrix4f.PROPERTY_IDENTITY) != 0) {
-        	mat.get(projMatrixBuffer);
-        } else {
-        	mat.mulLocal(pretransformMatrix, new Matrix4f()).get(projMatrixBuffer);
-        }
+        mat.get(projectionMatrix.buffer().asFloatBuffer());
     }
 
-
     public static void calculateMVP() {
-        org.joml.Matrix4f MV = new org.joml.Matrix4f().set(modelViewMatrix.buffer());
-        org.joml.Matrix4f P = new org.joml.Matrix4f().set(projectionMatrix.buffer());
+        org.joml.Matrix4f MV = new org.joml.Matrix4f(modelViewMatrix.buffer().asFloatBuffer());
+        org.joml.Matrix4f P = new org.joml.Matrix4f(projectionMatrix.buffer().asFloatBuffer());
+
         P.mul(MV).get(MVP.buffer());
     }
 
-    public static void translateMVP(float x, float y, float z, FloatBuffer ptr) {
-        org.joml.Matrix4f MVP_ = new org.joml.Matrix4f().set(MVP.buffer());
-
-        MVP_.translate(x, y, z).get(ptr);
-    }
-
     public static void setTextureMatrix(Matrix4f mat) {
-        mat.get(TextureMatrix.buffer());
+        mat.get(TextureMatrix.buffer().asFloatBuffer());
     }
 
     public static MappedBuffer getTextureMatrix() {
@@ -216,35 +147,19 @@ public abstract class VRenderSystem {
     public static void logicOp(GlStateManager.LogicOp p_69836_) {
         PipelineState.currentLogicOpState.setLogicOp(p_69836_);
     }
-    public static void setFogClearColor(float f1, float f2, float f3, float f4)
-    {
-        ColorUtil.setRGBA_Buffer(clearColor, f1, f2, f3, f4);
-    }
-    public static void clearColor(float f0, float f1, float f2, float f3) {
-//        if(f1==1&&f2==1&&f3==1&&f4==1) return; //Test JM Clear Fix
-        //set to true if different colour
-        clearColorUpdate=checkClearisActuallyDifferent(f0, f1, f2, f3);
-        if(!clearColorUpdate) return;
-        ColorUtil.setRGBA_Buffer(clearColor, f0, f1, f2, f3);
-        clearColor2[0]=f0;
-        clearColor2[1]=f1;
-        clearColor2[2]=f2;
-        clearColor2[3]=f3;
-    }
 
-    private static boolean checkClearisActuallyDifferent(float f0, float f1, float f2, float f3) {
-        float f0_ = clearColor2[0];
-        float f1_ = clearColor2[1];
-        float f2_ = clearColor2[2];
-        float f3_ = clearColor2[3];
-        return f0_!=f0&&f1_!=f1&&f2_!=f2&&f3_!=f3;
+    public static void clearColor(float f1, float f2, float f3, float f4) {
+        ColorUtil.setRGBA_Buffer(clearColor, f1, f2, f3, f4);
     }
 
     public static void clear(int v) {
         //Skip Mods reapplying the same colour over and over per clear
         //if(/*currentClearColor==clearColor||*/!clearColorUpdate) return;
-        Renderer.clearAttachments(clearColorUpdate ? v : GL_DEPTH_BUFFER_BIT); //Depth Only Clears needed to fix Chat + Command Elements
-        clearColorUpdate=false;
+//        if(appliedClear) return;
+
+        Renderer.clearAttachments(canApplyClear ? v : GL_DEPTH_BUFFER_BIT); //Depth Only Clears needed to fix Chat + Command Elements
+            canApplyClear=false;
+        //        clearColorUpdate=false;
     }
 
     public static void disableDepthTest() {

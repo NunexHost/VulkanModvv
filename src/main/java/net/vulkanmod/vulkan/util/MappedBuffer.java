@@ -8,15 +8,14 @@ public record MappedBuffer( ByteBuffer buffer, long ptr) {
 
 
     public static MappedBuffer createFromBuffer(ByteBuffer buffer) {
-        return new MappedBuffer(buffer, MemoryUtil.memAddress0(buffer));
+        return new MappedBuffer(buffer);
     }
     public static MappedBuffer getMappedBuffer(ByteBuffer buffer, long ptr) {
         return new MappedBuffer(buffer, ptr);
     }
 
-    public static MappedBuffer getMappedBuffer(int size) {
-        ByteBuffer buffer = MemoryUtil.memAlloc(size);
-        return new MappedBuffer(buffer, MemoryUtil.memAddress0(buffer));
+    public MappedBuffer(ByteBuffer buffer) {
+        this(buffer, MemoryUtil.memAddress0(buffer));
     }
 
     public void putFloat(int idx, float f) {

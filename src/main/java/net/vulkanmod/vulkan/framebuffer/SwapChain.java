@@ -1,6 +1,7 @@
 package net.vulkanmod.vulkan.framebuffer;
 
 import net.vulkanmod.Initializer;
+import net.vulkanmod.config.VideoResolution;
 import net.vulkanmod.render.util.MathUtil;
 import net.vulkanmod.vulkan.DeviceManager;
 import net.vulkanmod.vulkan.Renderer;
@@ -9,7 +10,7 @@ import net.vulkanmod.vulkan.Vulkan;
 import net.vulkanmod.vulkan.queue.Queue;
 import net.vulkanmod.vulkan.queue.QueueFamilyIndices;
 import net.vulkanmod.vulkan.texture.VulkanImage;
-import org.joml.Matrix4f;
+import net.vulkanmod.vulkan.util.VUtil;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
@@ -30,12 +31,7 @@ import static org.lwjgl.vulkan.KHRSwapchain.*;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class SwapChain extends Framebuffer {
-    private static int DEFAULT_DEPTH_FORMAT = 0;
     private static final int DEFAULT_IMAGE_COUNT = 3;
-
-    public static int getDefaultDepthFormat() {
-        return DEFAULT_DEPTH_FORMAT;
-    }
 
     //Necessary until tearing-control-unstable-v1 is fully implemented on all GPU Drivers for Wayland
     //(As Immediate Mode (and by extension Screen tearing) doesn't exist on most Wayland installations currently)
@@ -60,13 +56,10 @@ public class SwapChain extends Framebuffer {
     private int[] currentLayout;
 
     public SwapChain() {
-        DEFAULT_DEPTH_FORMAT = DeviceManager.findDepthFormat();
-
         this.attachmentCount = 2;
 
-        this.depthFormat = DEFAULT_DEPTH_FORMAT;
+        this.depthFormat = Vulkan.getDefaultDepthFormat();
         createSwapChain();
-
     }
 
     public void recreateSwapChain() {
@@ -131,7 +124,7 @@ public class SwapChain extends Framebuffer {
             createInfo.imageArrayLayers(1);
             createInfo.imageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 
-            if(QueueFamilyIndices.graphicsFamily != (QueueFamilyIndices.presentFamily)) {
+            if(QueueFamilyIndices.graphicsFamily!=QueueFamilyIndices.presentFamily) {
                 createInfo.imageSharingMode(VK_SHARING_MODE_CONCURRENT);
                 createInfo.pQueueFamilyIndices(stack.ints(QueueFamilyIndices.graphicsFamily, QueueFamilyIndices.presentFamily));
             } else {
@@ -231,6 +224,7 @@ public class SwapChain extends Framebuffer {
     }
 
     public void beginRenderPass(VkCommandBuffer commandBuffer, MemoryStack stack) {
+
         if(DYNAMIC_RENDERING) {
 //            this.colorAttachmentLayout(stack, commandBuffer, Drawer.getCurrentFrame());
 //            beginDynamicRendering(commandBuffer, stack);

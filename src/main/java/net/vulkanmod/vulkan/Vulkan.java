@@ -5,7 +5,6 @@ import net.vulkanmod.vulkan.memory.Buffer;
 import net.vulkanmod.vulkan.memory.MemoryManager;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.StagingBuffer;
-import net.vulkanmod.vulkan.queue.Queue;
 import net.vulkanmod.vulkan.queue.QueueFamilyIndices;
 import net.vulkanmod.vulkan.shader.Pipeline;
 import net.vulkanmod.vulkan.texture.VulkanImage;
@@ -26,6 +25,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.toSet;
+import static net.vulkanmod.vulkan.queue.Queue.GraphicsQueue;
 import static net.vulkanmod.vulkan.util.VUtil.asPointerBuffer;
 import static org.lwjgl.glfw.GLFWVulkan.glfwCreateWindowSurface;
 import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
@@ -132,6 +132,9 @@ public class Vulkan {
 
     private static StagingBuffer[] stagingBuffers;
 
+    public static boolean use24BitsDepthFormat = true;
+    private static int DEFAULT_DEPTH_FORMAT = 0;
+
     public static void initVulkan(long window) {
         createInstance();
         setupDebugMessenger();
@@ -146,6 +149,7 @@ public class Vulkan {
         createCommandPool();
         allocateImmediateCmdBuffer();
 
+        setupDepthFormat();
         createSwapChain();
         Renderer.initRenderer();
 
@@ -161,6 +165,10 @@ public class Vulkan {
         for(int i = 0; i < stagingBuffers.length; ++i) {
             stagingBuffers[i] = new StagingBuffer(30 * 1024 * 1024);
         }
+    }
+
+    static void setupDepthFormat() {
+        DEFAULT_DEPTH_FORMAT = DeviceManager.findDepthFormat(use24BitsDepthFormat);
     }
 
     private static void createSwapChain() {
@@ -402,7 +410,7 @@ public class Vulkan {
             submitInfo.sType(VK_STRUCTURE_TYPE_SUBMIT_INFO);
             submitInfo.pCommandBuffers(stack.pointers(immediateCmdBuffer));
 
-            vkQueueSubmit(DeviceManager.getGraphicsQueue().queue(), submitInfo, immediateFence);
+            vkQueueSubmit(GraphicsQueue.queue(), submitInfo, immediateFence);
 
             vkWaitForFences(DeviceManager.device, immediateFence, true, VUtil.UINT64_MAX);
             vkResetFences(DeviceManager.device, immediateFence);
@@ -436,6 +444,10 @@ public class Vulkan {
             Renderer.scheduleSwapChainUpdate();
             swapChain.setVsync(b);
         }
+    }
+
+    public static int getDefaultDepthFormat() {
+        return DEFAULT_DEPTH_FORMAT;
     }
 
     public static long getSurface() { return surface; }

@@ -1,5 +1,6 @@
 package net.vulkanmod.mixin.render;
 
+import com.mojang.blaze3d.pipeline.RenderCall;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -32,7 +33,7 @@ public abstract class RenderSystemMixin {
 
     @Shadow private static Matrix4f projectionMatrix;
     @Shadow private static Matrix4f savedProjectionMatrix;
-    @Shadow private static PoseStack modelViewStack;
+    @Shadow @Final private static PoseStack modelViewStack;
     @Shadow private static Matrix4f modelViewMatrix;
     @Shadow private static Matrix4f textureMatrix;
     @Shadow @Final private static int[] shaderTextures;
@@ -73,6 +74,9 @@ public abstract class RenderSystemMixin {
             GlTexture glTexture = GlTexture.getTexture(id);
             VulkanImage vulkanImage = glTexture != null ? glTexture.getVulkanImage() : null;
 
+            if(vulkanImage == null)
+                return;
+
             VTextureSelector.bindTexture(i, vulkanImage);
         }
 
@@ -100,8 +104,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void enableColorLogicOp() {
         assertOnGameThread();
-        //GlStateManager._enableColorLogicOp();
-        //Vulkan
         VRenderSystem.enableColorLogicOp();
     }
 
@@ -111,8 +113,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void disableColorLogicOp() {
         assertOnGameThread();
-        //GlStateManager._disableColorLogicOp();
-        //Vulkan
         VRenderSystem.disableColorLogicOp();
     }
 
@@ -122,8 +122,6 @@ public abstract class RenderSystemMixin {
     @Overwrite
     public static void logicOp(GlStateManager.LogicOp op) {
         assertOnGameThread();
-        //GlStateManager._logicOp(op.value);
-        //Vulkan
         VRenderSystem.logicOp(op);
     }
 
@@ -131,7 +129,9 @@ public abstract class RenderSystemMixin {
      * @author
      */
     @Overwrite(remap = false)
-    public static void activeTexture(int texture) {}
+    public static void activeTexture(int texture) {
+        GlTexture.activeTexture(texture);
+    }
 
     /**
      * @author
@@ -212,7 +212,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void enableDepthTest() {
         assertOnGameThreadOrInit();
-        //GlStateManager._enableDepthTest();
         VRenderSystem.enableDepthTest();
     }
 
@@ -222,7 +221,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void depthFunc(int i) {
         assertOnGameThread();
-        //GlStateManager._depthFunc(i);
         VRenderSystem.depthFunc(i);
     }
 
@@ -232,7 +230,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void depthMask(boolean b) {
         assertOnGameThread();
-        //GlStateManager._depthMask(b);
         VRenderSystem.depthMask(b);
     }
 
@@ -307,8 +304,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void enableCull() {
         assertOnGameThread();
-        //GlStateManager._enableCull();
-        //Vulkan
         VRenderSystem.enableCull();
     }
 
@@ -318,8 +313,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void disableCull() {
         assertOnGameThread();
-        //GlStateManager._disableCull();
-        //Vulkan
         VRenderSystem.disableCull();
     }
 
@@ -329,8 +322,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void enablePolygonOffset() {
         assertOnGameThread();
-//      GlStateManager._enablePolygonOffset();
-        //Vulkan
         VRenderSystem.enablePolygonOffset();
     }
 
@@ -340,8 +331,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void disablePolygonOffset() {
         assertOnGameThread();
-//      GlStateManager._disablePolygonOffset();
-        //Vulkan
         VRenderSystem.disablePolygonOffset();
     }
 
@@ -351,8 +340,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void polygonOffset(float p_69864_, float p_69865_) {
         assertOnGameThread();
-//      GlStateManager._polygonOffset(p_69864_, p_69865_);
-        //Vulkan
         VRenderSystem.polygonOffset(p_69864_, p_69865_);
     }
 
@@ -362,8 +349,6 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     public static void clearColor(float p_69425_, float p_69426_, float p_69427_, float p_69428_) {
         assertOnGameThreadOrInit();
-//      GlStateManager._clearColor(p_69425_, p_69426_, p_69427_, p_69428_);
-        //Vulkan
         VRenderSystem.clearColor(p_69425_, p_69426_, p_69427_, p_69428_);
     }
 
@@ -376,9 +361,9 @@ public abstract class RenderSystemMixin {
         shaderLightDirections[1] = p_157175_;
 
         //Vulkan
-        VRenderSystem.lightDirection0.buffer().putFloat(0, p_157174_.x());
-        VRenderSystem.lightDirection0.buffer().putFloat(4, p_157174_.y());
-        VRenderSystem.lightDirection0.buffer().putFloat(8, p_157174_.z());
+        VRenderSystem.lightDirection0.buffer.putFloat(0, p_157174_.x());
+        VRenderSystem.lightDirection0.buffer.putFloat(4, p_157174_.y());
+        VRenderSystem.lightDirection0.buffer.putFloat(8, p_157174_.z());
 
         VRenderSystem.lightDirection1.buffer().putFloat(0, p_157175_.x());
         VRenderSystem.lightDirection1.buffer().putFloat(4, p_157175_.y());
@@ -395,7 +380,6 @@ public abstract class RenderSystemMixin {
         shaderColor[2] = b;
         shaderColor[3] = a;
 
-        //Vulkan
         VRenderSystem.setShaderColor(r, g, b, a);
     }
 
@@ -416,29 +400,18 @@ public abstract class RenderSystemMixin {
      * @author
      */
     @Overwrite(remap = false)
-    public static void renderCrosshair(int p_69882_) {
-        assertOnGameThread();
-        //GLX._renderCrosshair(p_69882_, true, true, true);
-        //Vulkan
-        VRenderSystem.renderCrosshair(p_69882_, true, true, true);
-    }
-
-    /**
-     * @author
-     */
-    @Overwrite(remap = false)
     public static void setProjectionMatrix(Matrix4f projectionMatrix, VertexSorting vertexSorting) {
         Matrix4f matrix4f = new Matrix4f(projectionMatrix);
         if (!isOnRenderThread()) {
             recordRenderCall(() -> {
                 RenderSystemMixin.projectionMatrix = matrix4f;
-                //Vulkan
+
                 VRenderSystem.applyProjectionMatrix(matrix4f);
                 VRenderSystem.calculateMVP();
             });
         } else {
             RenderSystemMixin.projectionMatrix = matrix4f;
-            //Vulkan
+
             VRenderSystem.applyProjectionMatrix(matrix4f);
             VRenderSystem.calculateMVP();
         }
@@ -490,7 +463,7 @@ public abstract class RenderSystemMixin {
             });
         } else {
             modelViewMatrix = matrix4f;
-            //Vulkan
+
             VRenderSystem.applyModelViewMatrix(matrix4f);
             VRenderSystem.calculateMVP();
         }
@@ -503,7 +476,7 @@ public abstract class RenderSystemMixin {
     @Overwrite(remap = false)
     private static void _restoreProjectionMatrix() {
         projectionMatrix = savedProjectionMatrix;
-        //Vulkan
+
         VRenderSystem.applyProjectionMatrix(projectionMatrix);
         VRenderSystem.calculateMVP();
     }
@@ -513,6 +486,6 @@ public abstract class RenderSystemMixin {
      */
     @Overwrite(remap = false)
     public static void texParameter(int target, int pname, int param) {
-        //TODO
+        GlTexture.texParameteri(target, pname, param);
     }
 }

@@ -5,7 +5,6 @@ import net.vulkanmod.render.vertex.TerrainBufferBuilder;
 import net.vulkanmod.render.vertex.TerrainRenderType;
 
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -14,14 +13,14 @@ public class ThreadBuilderPack {
     private static Function<TerrainRenderType, TerrainBufferBuilder> terrainBuilderConstructor;
 
     public static void defaultTerrainBuilderConstructor() {
-        terrainBuilderConstructor = renderType -> new TerrainBufferBuilder(renderType.maxSize);
+        terrainBuilderConstructor = renderType -> new TerrainBufferBuilder(renderType.bufferSize);
     }
 
     public static void setTerrainBuilderConstructor(Function<TerrainRenderType, TerrainBufferBuilder> constructor) {
         terrainBuilderConstructor = constructor;
     }
 
-    private final EnumMap<TerrainRenderType, TerrainBufferBuilder> builders=new EnumMap<>(TerrainRenderType.class);;
+    private final Map<TerrainRenderType, TerrainBufferBuilder> builders= new EnumMap<>(TerrainRenderType.class);
 
     public ThreadBuilderPack() {
         for (TerrainRenderType renderType : TerrainRenderType.getActiveLayers()) {

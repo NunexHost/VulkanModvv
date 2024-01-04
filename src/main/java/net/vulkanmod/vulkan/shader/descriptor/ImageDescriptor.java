@@ -12,31 +12,26 @@ public class ImageDescriptor implements Descriptor {
     private final int stage;
     public final String qualifier;
     public final String name;
+    public final int imageIdx;
 
     public final boolean isStorageImage;
     public boolean useSampler;
     public boolean isReadOnlyLayout;
     private int layout;
     private int mipLevel = -1;
-//TODO: Match Binding slots to .json config to avoid linear iteratuin/enumertaion issues with misalignments and/or slots
-// <<<<<<< HEAD
-//     public ImageDescriptor(int binding, String type, String name) {
-//         this(binding, type, name, false);
-//     }
-//
-//     public ImageDescriptor(int binding, String type, String name, boolean isStorageImage) {
-// =======
-    public ImageDescriptor(int binding, int stage, String type, String name) {
-        this(binding, stage, type, name, false);
+
+    public ImageDescriptor(int binding, String type, String name, int imageIdx) {
+        this(binding, type, name, imageIdx, false);
     }
 
-    public ImageDescriptor(int binding, int stage, String type, String name, boolean isStorageImage) {
+    public ImageDescriptor(int binding, String type, String name, int imageIdx, boolean isStorageImage) {
         this.binding = binding;
         this.stage = stage;
         this.qualifier = type;
         this.name = name;
         this.isStorageImage = isStorageImage;
         this.useSampler = !isStorageImage;
+        this.imageIdx = imageIdx;
 
         descriptorType = isStorageImage ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         setLayout(isStorageImage ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -75,7 +70,7 @@ public class ImageDescriptor implements Descriptor {
     }
 
     public VulkanImage getImage() {
-        return VTextureSelector.getTexture(this.name);
+        return VTextureSelector.getImage(this.imageIdx);
     }
 
     public long getImageView(VulkanImage image) {
