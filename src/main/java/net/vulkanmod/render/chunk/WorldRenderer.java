@@ -1,5 +1,6 @@
 package net.vulkanmod.render.chunk;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -26,7 +27,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.vulkanmod.Initializer;
-import net.vulkanmod.config.Options;
 import net.vulkanmod.interfaces.FrustumMixed;
 import net.vulkanmod.render.PipelineManager;
 import net.vulkanmod.render.chunk.build.ChunkTask;
@@ -45,7 +45,6 @@ import net.vulkanmod.vulkan.Vulkan;
 import net.vulkanmod.vulkan.memory.Buffer;
 import net.vulkanmod.vulkan.memory.IndirectBuffer;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
-import net.vulkanmod.vulkan.queue.Queue;
 import net.vulkanmod.vulkan.shader.GraphicsPipeline;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
@@ -62,7 +61,6 @@ public class WorldRenderer {
     private static WorldRenderer INSTANCE;
 
     private final Minecraft minecraft;
-    private static final boolean drawIndirectSupported = Options.drawIndirectSupported;
 
     private ClientLevel level;
     private int lastViewDistance;
@@ -85,7 +83,7 @@ public class WorldRenderer {
 
     private final TaskDispatcher taskDispatcher;
     private final ResettableQueue<RenderSection> chunkQueue = new ResettableQueue<>();
-    private DrawBufferSetQueue drawBufferSetQueue;
+    private AreaSetQueue chunkAreaQueue;
     private short lastFrame = 0;
 
     private double xTransparentOld;
@@ -94,7 +92,7 @@ public class WorldRenderer {
 
     private VFrustum frustum;
 
-    IndirectBuffer[] indirectBuffers = null;
+    IndirectBuffer[] indirectBuffers;
 //    UniformBuffers uniformBuffers;
 
     public RenderRegionCache renderRegionCache;
@@ -107,8 +105,7 @@ public class WorldRenderer {
         this.renderBuffers = renderBuffers;
         this.taskDispatcher = new TaskDispatcher();
         ChunkTask.setTaskDispatcher(this.taskDispatcher);
-        if(drawIndirectSupported) {
-            allocateIndirectBuffers();
+        allocateIndirectBuffers();
 
             Renderer.getInstance().addOnResizeCallback(() -> {
                 if (this.indirectBuffers.length != Renderer.getFramesNum())
@@ -128,7 +125,7 @@ public class WorldRenderer {
         this.indirectBuffers = new IndirectBuffer[Renderer.getFramesNum()];
 
         for(int i = 0; i < this.indirectBuffers.length; ++i) {
-            this.indirectBuffers[i] = new IndirectBuffer(1048576, MemoryTypes.HOST_MEM);
+            this.indirectBuffers[i] = new IndirectBuffer(1000000, MemoryTypes.HOST_MEM);
 //            this.indirectBuffers[i] = new IndirectBuffer(1000000, MemoryTypes.GPU_MEM);
         }
 
@@ -256,7 +253,7 @@ public class WorldRenderer {
 //            p.round();
         }
 
-        if(drawIndirectSupported) this.indirectBuffers[Renderer.getCurrentFrame()].reset();
+        this.indirectBuffers[Renderer.getCurrentFrame()].reset();
 //        this.uniformBuffers.reset();
 
         this.minecraft.getProfiler().pop();
@@ -275,7 +272,7 @@ public class WorldRenderer {
             int k = Mth.floor(vec3.x / 16.0D) * 16;
             int l = Mth.floor(vec3.z / 16.0D) * 16;
 
-
+            List<RenderSection> list = Lists.newArrayList();
 
             for(int i1 = -this.lastViewDistance; i1 <= this.lastViewDistance; ++i1) {
                 for(int j1 = -this.lastViewDistance; j1 <= this.lastViewDistance; ++j1) {
@@ -284,7 +281,7 @@ public class WorldRenderer {
                     if (renderSection1 != null) {
                         renderSection1.setGraphInfo(null, (byte) 0);
                         renderSection1.setLastFrame(this.lastFrame);
-                        this.chunkQueue.add(renderSection1);
+                        list.add(renderSection1);
 
                     }
                 }
@@ -294,6 +291,10 @@ public class WorldRenderer {
 //            list.sort(Comparator.comparingDouble((p_194358_) -> {
 //                return blockpos.distSqr(p_194358_.chunk.getOrigin().offset(8, 8, 8));
 //            }));
+
+            for (RenderSection chunkInfo : list) {
+                this.chunkQueue.add(chunkInfo);
+            }
 
         } else {
             renderSection.setGraphInfo(null, (byte) 0);
@@ -311,7 +312,7 @@ public class WorldRenderer {
     }
 
     private void resetUpdateQueues() {
-        this.drawBufferSetQueue.clear();
+        this.chunkAreaQueue.clear();
         this.sectionGrid.chunkAreaManager.resetQueues();
     }
 
@@ -325,6 +326,7 @@ public class WorldRenderer {
 
         while(this.chunkQueue.hasNext()) {
             RenderSection renderSection = this.chunkQueue.poll();
+
 
             if(!renderSection.isCompletelyEmpty()) {
                 renderSection.getChunkArea().addSections(renderSection);
@@ -493,7 +495,7 @@ public class WorldRenderer {
             }
 
             this.sectionGrid = new SectionGrid(this.level, this.minecraft.options.getEffectiveRenderDistance());
-            this.drawBufferSetQueue = new DrawBufferSetQueue(this.sectionGrid.chunkAreaManager.size);
+            this.chunkAreaQueue = new AreaSetQueue(this.sectionGrid.chunkAreaManager.size);
 
             this.onAllChangedCallbacks.forEach(Runnable::run);
 
@@ -616,7 +618,7 @@ public class WorldRenderer {
                 p.push("entities");
             }
 //            case "translucent" -> p.pop();
-            case "tripwire" -> p.pop();
+            case TRIPWIRE -> p.pop();
         }
 
     }
@@ -740,4 +742,4 @@ public class WorldRenderer {
             Arrays.stream(indirectBuffers).forEach(Buffer::freeBuffer);
     }
 
-}
+            }
