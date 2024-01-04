@@ -3,6 +3,7 @@ package net.vulkanmod.render.chunk;
 import net.vulkanmod.Initializer;
 import net.vulkanmod.render.PipelineManager;
 import net.vulkanmod.render.chunk.build.UploadBuffer;
+import net.vulkanmod.render.chunk.util.ResettableQueue;
 import net.vulkanmod.render.chunk.util.StaticQueue;
 import net.vulkanmod.render.vertex.TerrainRenderType;
 import net.vulkanmod.vulkan.Renderer;
@@ -20,6 +21,8 @@ import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
 import java.util.EnumMap;
 
+import static net.vulkanmod.render.vertex.TerrainRenderType.TRANSLUCENT;
+import static net.vulkanmod.render.vertex.TerrainRenderType.getActiveLayers;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class DrawBuffers {
@@ -31,6 +34,7 @@ public class DrawBuffers {
     private final int minHeight;
 
     private boolean allocated = false;
+    AreaBuffer indexBuffer;
     AreaBuffer vertexBuffer;
     AreaBuffer indexBuffer;
     private final EnumMap<TerrainRenderType, AreaBuffer> areaBufferTypes = new EnumMap<>(TerrainRenderType.class);
@@ -136,37 +140,37 @@ public class DrawBuffers {
 
         boolean isTranslucent = terrainRenderType == TerrainRenderType.TRANSLUCENT;
 
-        VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
-        if(isTranslucent) {
-            vkCmdBindIndexBuffer(commandBuffer, this.indexBuffer.getId(), 0, VK_INDEX_TYPE_UINT16);
-        }
+            VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
+            if (isTranslucent) {
+                vkCmdBindIndexBuffer(commandBuffer, this.indexBuffer.getId(), 0, VK_INDEX_TYPE_UINT16);
+            }
 
         var iterator = queue.iterator(isTranslucent);
         while (iterator.hasNext()) {
 
             DrawParameters drawParameters = iterator.next();
 
-            //Debug
-//            BlockPos o = section.origin;
-////            BlockPos pos = new BlockPos(-2188, 65, -1674);
-//
-////            Vec3 cameraPos = WorldRenderer.getCameraPos();
-//            BlockPos pos = new BlockPos(Minecraft.getInstance().getCameraEntity().blockPosition());
-//            if(o.getX() <= pos.getX() && o.getY() <= pos.getY() && o.getZ() <= pos.getZ() &&
-//                    o.getX() + 16 >= pos.getX() && o.getY() + 16 >= pos.getY() && o.getZ() + 16 >= pos.getZ()) {
-//                System.nanoTime();
-//
-//                }
-//
-//            }
+                //Debug
+    //            BlockPos o = section.origin;
+    ////            BlockPos pos = new BlockPos(-2188, 65, -1674);
+    //
+    ////            Vec3 cameraPos = WorldRenderer.getCameraPos();
+    //            BlockPos pos = new BlockPos(Minecraft.getInstance().getCameraEntity().blockPosition());
+    //            if(o.getX() <= pos.getX() && o.getY() <= pos.getY() && o.getZ() <= pos.getZ() &&
+    //                    o.getX() + 16 >= pos.getX() && o.getY() + 16 >= pos.getY() && o.getZ() + 16 >= pos.getZ()) {
+    //                System.nanoTime();
+    //
+    //                }
+    //
+    //            }
 
 
-            //TODO
-            if(!drawParameters.ready && drawParameters.vertexBufferSegment.getOffset() != -1) {
-                if(!drawParameters.vertexBufferSegment.isReady())
-                    continue;
-                drawParameters.ready = true;
-            }
+                //TODO
+                if (!drawParameters.ready && drawParameters.vertexBufferSegment.getOffset() != -1) {
+                    if (!drawParameters.vertexBufferSegment.isReady())
+                        continue;
+                    drawParameters.ready = true;
+                }
 
             long ptr = bufferPtr + (drawCount * 20L);
             MemoryUtil.memPutInt(ptr, drawParameters.indexCount);
@@ -179,18 +183,18 @@ public class DrawBuffers {
 
 
 
-            drawCount++;
-        }
+                drawCount++;
+            }
 
-        if(drawCount == 0) {
-            MemoryStack.stackPop();
-            return 0;
-        }
+            if(drawCount == 0) {
+                return;
+            }
 
+//            if(drawCount!= size) Initializer.LOGGER.warn(drawCount+"-->"+ size);
 
-        byteBuffer.position(0);
+            byteBuffer.position(0);
 
-        indirectBuffer.recordCopyCmd(byteBuffer);
+            indirectBuffer.recordCopyCmd(byteBuffer);
 
 
 
@@ -257,9 +261,9 @@ public class DrawBuffers {
         }
 
 
-        if(isTranslucent) {
-            vkCmdBindIndexBuffer(commandBuffer, this.indexBuffer.getId(), 0, VK_INDEX_TYPE_UINT16);
-        }
+            if(isTranslucent) {
+                vkCmdBindIndexBuffer(commandBuffer, this.indexBuffer.getId(), 0, VK_INDEX_TYPE_UINT16);
+            }
 
         for (var iterator = queue.iterator(isTranslucent); iterator.hasNext(); ) {
             final DrawParameters drawParameters = iterator.next();
@@ -280,13 +284,28 @@ public class DrawBuffers {
         if(this.indexBuffer!=null) this.indexBuffer.freeBuffer();
 
         this.vertexBuffer = null;
-        this.indexBuffer = null;
         this.allocated = false;
     }
 
     public boolean isAllocated() {
         return allocated;
     }
+
+    public void addMeshlet(TerrainRenderType r, DrawParameters drawParameters) {
+        this.sectionQueues.get(r).add(drawParameters);
+    }
+
+    public void clear() {
+        this.sectionQueues.values().forEach(StaticQueue::clear);
+    }
+
+    public void addRenderTypes(Set<TerrainRenderType> renderTypes) {
+        renderTypes.forEach(renderType ->  this.sectionQueues.computeIfAbsent(renderType, r->new StaticQueue<>(512)));
+    }
+
+//    public void clear(TerrainRenderType r) {
+//        this.sectionQueues.get(r).clear();
+//    }
 
     public static class DrawParameters {
         int indexCount, firstIndex, vertexOffset, baseInstance;

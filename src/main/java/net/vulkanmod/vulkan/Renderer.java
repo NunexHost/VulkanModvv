@@ -12,8 +12,10 @@ import net.vulkanmod.render.profiling.Profiler2;
 import net.vulkanmod.vulkan.framebuffer.Framebuffer;
 import net.vulkanmod.vulkan.framebuffer.RenderPass;
 import net.vulkanmod.vulkan.memory.MemoryManager;
+import net.vulkanmod.vulkan.passes.DefaultMainPass;
 import net.vulkanmod.vulkan.passes.LegacyMainPass;
 import net.vulkanmod.vulkan.passes.MainPass;
+import net.vulkanmod.vulkan.queue.Queue;
 import net.vulkanmod.vulkan.shader.*;
 import net.vulkanmod.vulkan.shader.layout.PushConstants;
 import net.vulkanmod.vulkan.texture.VTextureSelector;
@@ -37,6 +39,7 @@ import static net.vulkanmod.vulkan.queue.Queue.GraphicsQueue;
 import static net.vulkanmod.vulkan.queue.Queue.PresentQueue;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
+import static org.lwjgl.vulkan.KHRSurface.*;
 import static org.lwjgl.vulkan.KHRSwapchain.*;
 import static org.lwjgl.vulkan.VK10.*;
 
@@ -47,6 +50,7 @@ public class Renderer {
     private static VkDevice device;
 
     private static boolean swapChainUpdate = false;
+    public static boolean reload = false;
     public static boolean skipRendering = false;
 
     private static boolean effectActive = false;
@@ -91,7 +95,7 @@ public class Renderer {
 
     public Renderer() {
         device = Vulkan.getDevice();
-        framesNum = Initializer.CONFIG.frameQueueSize;
+        framesNum = getSwapChain().getFramesNum();
         imagesNum = getSwapChain().getImagesNum();
 
     }
@@ -454,7 +458,7 @@ public class Renderer {
         //Semaphores need to be recreated in order to make them unsignaled
         destroySyncObjects();
 
-        int newFramesNum = Initializer.CONFIG.frameQueueSize;
+        int newFramesNum = getSwapChain().getFramesNum();
         imagesNum = getSwapChain().getImagesNum();
 
         if(framesNum != newFramesNum) {
@@ -526,7 +530,7 @@ public class Renderer {
 
     public void uploadAndBindUBOs(Pipeline pipeline) {
         VkCommandBuffer commandBuffer = currentCmdBuffer;
-        pipeline.bindDescriptorSets(commandBuffer, currentFrame);
+        pipeline.bindDescriptorSets(commandBuffer, currentFrame, true);
     }
 
     public void pushConstants(Pipeline pipeline) {
@@ -555,7 +559,7 @@ public class Renderer {
         if(framebuffer == null)
             return;
 
-        clearAttachments(v, framebuffer.getWidth(), framebuffer.getHeight());
+        clearAttachments(GL_DEPTH_BUFFER_BIT, framebuffer.getWidth(), framebuffer.getHeight());
     }
 
     public static void clearAttachments(int v, int width, int height) {
@@ -622,7 +626,15 @@ public class Renderer {
             return;
 
         try(MemoryStack stack = stackPush()) {
+            VkExtent2D transformedExtent = transformToExtent(VkExtent2D.malloc(stack), width, height);
+            VkOffset2D transformedOffset = transformToOffset(VkOffset2D.malloc(stack), x, y, width, height);
             VkViewport.Buffer viewport = VkViewport.malloc(1, stack);
+
+            x = transformedOffset.x();
+            y = transformedOffset.y();
+            width = transformedExtent.width();
+            height = transformedExtent.height();
+
             viewport.x(x);
             viewport.y(height + y);
             viewport.width(width);
@@ -667,11 +679,20 @@ public class Renderer {
             return;
 
         try(MemoryStack stack = stackPush()) {
-            int framebufferHeight = INSTANCE.boundFramebuffer.getHeight();
+
+        	VkExtent2D extent = VkExtent2D.malloc(stack);
+            Framebuffer boundFramebuffer = Renderer.getInstance().boundFramebuffer;
+            // Since our x and y are still in Minecraft's coordinate space, pre-transform the framebuffer's width and height to get expected results.
+            transformToExtent(extent, boundFramebuffer.getWidth(), boundFramebuffer.getHeight());
+            int framebufferHeight = extent.height();
 
             VkRect2D.Buffer scissor = VkRect2D.malloc(1, stack);
-            scissor.offset().set(x, framebufferHeight - (y + height));
-            scissor.extent().set(width, height);
+            // Use this corrected height to transform from OpenGL to Vulkan coordinate space.
+
+            scissor.offset(transformToOffset(VkOffset2D.malloc(stack), x, framebufferHeight - (y + height), width, height));
+            // Reuse the extent to transform the scissor width/height
+            scissor.extent(transformToExtent(extent, width, height));
+
 
             vkCmdSetScissor(INSTANCE.currentCmdBuffer, 0, scissor);
         }

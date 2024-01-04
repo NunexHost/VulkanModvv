@@ -48,6 +48,8 @@ public abstract class RenderSystemMixin {
 
     @Shadow private static @Nullable Thread renderThread;
 
+    @Shadow private static void pollEvents() {}
+
     /**
      * @author
      */
@@ -164,9 +166,10 @@ public abstract class RenderSystemMixin {
      */
     @Overwrite(remap = false)
     public static void flipFrame(long window) {
-        org.lwjgl.glfw.GLFW.glfwPollEvents();
+        pollEvents();
         RenderSystem.replayQueue();
         Tesselator.getInstance().getBuilder().clear();
+        pollEvents();
     }
 
     /**
@@ -357,9 +360,10 @@ public abstract class RenderSystemMixin {
         shaderLightDirections[0] = p_157174_;
         shaderLightDirections[1] = p_157175_;
 
-        VRenderSystem.lightDirection0.buffer().putFloat(0, p_157174_.x());
-        VRenderSystem.lightDirection0.buffer().putFloat(4, p_157174_.y());
-        VRenderSystem.lightDirection0.buffer().putFloat(8, p_157174_.z());
+        //Vulkan
+        VRenderSystem.lightDirection0.buffer.putFloat(0, p_157174_.x());
+        VRenderSystem.lightDirection0.buffer.putFloat(4, p_157174_.y());
+        VRenderSystem.lightDirection0.buffer.putFloat(8, p_157174_.z());
 
         VRenderSystem.lightDirection1.buffer().putFloat(0, p_157175_.x());
         VRenderSystem.lightDirection1.buffer().putFloat(4, p_157175_.y());

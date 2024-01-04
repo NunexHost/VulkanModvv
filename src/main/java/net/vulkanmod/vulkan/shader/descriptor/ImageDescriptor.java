@@ -9,6 +9,7 @@ public class ImageDescriptor implements Descriptor {
 
     private final int descriptorType;
     private final int binding;
+    private final int stage;
     public final String qualifier;
     public final String name;
     public final int imageIdx;
@@ -25,6 +26,7 @@ public class ImageDescriptor implements Descriptor {
 
     public ImageDescriptor(int binding, String type, String name, int imageIdx, boolean isStorageImage) {
         this.binding = binding;
+        this.stage = stage;
         this.qualifier = type;
         this.name = name;
         this.isStorageImage = isStorageImage;
@@ -47,7 +49,7 @@ public class ImageDescriptor implements Descriptor {
 
     @Override
     public int getStages() {
-        return VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT;
+        return stage;
     }
 
     public void setLayout(int layout) {

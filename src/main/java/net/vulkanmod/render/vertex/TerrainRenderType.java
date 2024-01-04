@@ -1,5 +1,6 @@
 package net.vulkanmod.render.vertex;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.renderer.RenderType;
 import net.vulkanmod.Initializer;
 import net.vulkanmod.vulkan.VRenderSystem;

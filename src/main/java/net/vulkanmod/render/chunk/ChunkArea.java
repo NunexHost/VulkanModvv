@@ -116,9 +116,9 @@ public record ChunkArea(int index, byte[] inFrustum, Vector3i position, DrawBuff
         return this.drawBuffers;
     }
 
-//    private void allocateDrawBuffers() {
-//        this.drawBuffers = new DrawBuffers(this.index, this.position);
-//    }
+    private void allocateDrawBuffers() {
+        this.drawBuffers = new DrawBuffers();
+    }
 
     public void addSections(RenderSection section) {
         for(var t : section.getCompiledSection().renderTypes) {
